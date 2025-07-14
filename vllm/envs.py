@@ -911,6 +911,11 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_ALL2ALL_BACKEND":
     lambda: os.getenv("VLLM_ALL2ALL_BACKEND", "naive"),
 
+    # Use this to set the device ID without touching CUDA_VISIBLE_DEVICES
+    "VLLM_VISIBLE_DEVICES":
+    lambda: os.environ.get("VLLM_VISIBLE_DEVICES", None),
+
+
     # Control the maximum number of tokens per expert supported by the
     # NVFP4 MoE CUTLASS Kernel. This value is used to create a buffer for
     # the blockscale tensor of activations NVFP4 Quantization.
