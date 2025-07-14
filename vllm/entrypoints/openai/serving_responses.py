@@ -27,6 +27,7 @@ from vllm.entrypoints.openai.protocol import (ErrorResponse,
 # yapf: enable
 from vllm.entrypoints.openai.serving_engine import OpenAIServing
 from vllm.entrypoints.openai.serving_models import OpenAIServingModels
+from vllm.inputs.data import TokensPrompt as EngineTokensPrompt
 from vllm.logger import init_logger
 from vllm.outputs import RequestOutput
 from vllm.reasoning import ReasoningParser, ReasoningParserManager
@@ -176,14 +177,13 @@ class OpenAIServingResponses(OpenAIServing):
                 trace_headers = (None if raw_request is None else await
                                  self._get_trace_headers(raw_request.headers))
 
-                generator = self.engine_client.generate(
+                generator = self._make_generator(
+                    request,
                     engine_prompt,
                     sampling_params,
-                    request.request_id,
                     lora_request=lora_request,
-                    trace_headers=trace_headers,
                     prompt_adapter_request=prompt_adapter_request,
-                    priority=request.priority,
+                    trace_headers=trace_headers,
                 )
                 generators.append(generator)
         except ValueError as e:
@@ -247,6 +247,42 @@ class OpenAIServingResponses(OpenAIServing):
         except Exception as e:
             return self.create_error_response(str(e))
 
+    async def _make_generator(
+        self,
+        request: ResponsesRequest,
+        engine_prompt: EngineTokensPrompt,
+        sampling_params: SamplingParams,
+        **kwargs,
+    ):
+        cnt = 0
+        request_id = request.request_id
+        while True:
+            generator = self.engine_client.generate(
+                engine_prompt,
+                sampling_params,
+                request_id,
+                priority=request.priority,
+                **kwargs,
+            )
+            async for res in generator:
+                print(res)
+                yield res
+
+            output = res.outputs[0]
+            # if output.finish_reason != "stop" or output.stop_reason != 700:
+            #     break
+
+            cnt += 1
+            prev_token_ids = res.prompt_token_ids + output.token_ids
+            new_token_ids = [1, 2, 3]
+            engine_prompt = EngineTokensPrompt(
+                prompt_token_ids=prev_token_ids + new_token_ids,
+                cache_salt=engine_prompt.get("cache_salt"),
+            )
+            request_id = request.request_id + f"_{cnt}"
+            if cnt == 3:
+                break
+
     async def responses_full_generator(
         self,
         request: ResponsesRequest,
@@ -269,6 +305,7 @@ class OpenAIServingResponses(OpenAIServing):
         except ValueError as e:
             # TODO: Use a vllm-specific Validation Error
             return self.create_error_response(str(e))
+        print(f"Final res: {final_res}")
 
         assert final_res is not None
         assert len(final_res.outputs) == 1
