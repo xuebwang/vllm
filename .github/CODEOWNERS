@@ -39,7 +39,6 @@ CMakeLists.txt @tlrmchlsmth @LucasWilkinson
 /tests/kernels @tlrmchlsmth @WoosukKwon
 /tests/model_executor/test_guided_processors.py @mgoin @russellb
 /tests/models @DarkLight1337 @ywang96
-/tests/multi_step @alexm-redhat @comaniac
 /tests/multimodal @DarkLight1337 @ywang96
 /tests/prefix_caching @comaniac @KuntaiDu
 /tests/quantization @mgoin @robertgshaw2-redhat
