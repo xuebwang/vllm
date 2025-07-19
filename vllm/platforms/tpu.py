@@ -131,11 +131,6 @@ class TpuPlatform(Platform):
         parallel_config = vllm_config.parallel_config
         scheduler_config = vllm_config.scheduler_config
         if parallel_config.worker_cls == "auto":
-            if scheduler_config.is_multi_step:
-                raise NotImplementedError(
-                    "Multi-step scheduling is not supported (and not "
-                    "needed) on vLLM V1. Please launch without "
-                    "--num-scheduler-steps.")
             parallel_config.worker_cls = "vllm.v1.worker.tpu_worker.TPUWorker"
 
         assert not vllm_config.speculative_config, (

@@ -2327,16 +2327,7 @@ class SchedulerConfig:
 
         if self.max_num_batched_tokens is None:
             if self.enable_chunked_prefill:
-                if self.num_scheduler_steps > 1:
-                    # Multi-step Chunked-Prefill doesn't allow prompt-chunking
-                    # for now. Have max_num_batched_tokens set to max_model_len
-                    # so we don't reject sequences on account of a short
-                    # max_num_batched_tokens.
-                    self.max_num_batched_tokens = max(
-                        self.max_model_len, DEFAULT_MAX_NUM_BATCHED_TOKENS)
-                else:
-                    self.max_num_batched_tokens = (
-                        DEFAULT_MAX_NUM_BATCHED_TOKENS)
+                self.max_num_batched_tokens = DEFAULT_MAX_NUM_BATCHED_TOKENS
             else:
                 # If max_model_len is too short, use
                 # DEFAULT_MAX_NUM_BATCHED_TOKENS as the default value
@@ -2426,12 +2417,6 @@ class SchedulerConfig:
                 "num_lookahead_slots "
                 f"({self.num_lookahead_slots}) must be greater than or "
                 "equal to 0.")
-
-        if self.num_scheduler_steps < 1:
-            raise ValueError(
-                "num_scheduler_steps "
-                f"({self.num_scheduler_steps}) must be greater than or "
-                "equal to 1.")
 
         if self.max_num_partial_prefills < 1:
             raise ValueError(

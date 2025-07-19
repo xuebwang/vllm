@@ -812,35 +812,6 @@ class SequenceGroup:
         return self.prompt_adapter_request.prompt_adapter_num_virtual_tokens\
                          if self.prompt_adapter_request else 0
 
-    def init_multi_step(self, num_steps: int) -> None:
-        self.state.num_steps = num_steps
-        self.state.current_step = 0
-
-    def init_multi_step_from_lookahead_slots(self, num_lookahead_slots: int,
-                                             num_scheduler_steps: int,
-                                             is_multi_step: bool,
-                                             enable_chunking: bool) -> None:
-
-        if not is_multi_step:
-            self.init_multi_step(num_steps=num_scheduler_steps)
-            return
-
-        # Multi-Step case
-        is_prefill = self.is_prefill()
-
-        # The asserts below reflect the expectations of the current system.
-        if is_prefill and enable_chunking:
-            assert num_lookahead_slots == num_scheduler_steps
-            self.init_multi_step(num_steps=num_lookahead_slots)
-        else:
-            is_decode: bool = not is_prefill
-            # If it is a prefill, num_lookahead_slots must be 0
-            assert num_lookahead_slots == 0 or is_decode
-            # If it is a decode, num_lookahead_slots + 1 must match
-            # the scheduler steps.
-            assert num_lookahead_slots + 1 == num_scheduler_steps or is_prefill
-            self.init_multi_step(num_steps=num_lookahead_slots + 1)
-
     def set_last_token_time(self, now: float) -> None:
         """Sets the last token time for Request level timings."""
         # If still in prefill phase, assertion fails.
@@ -1334,24 +1305,6 @@ class HiddenStates(msgspec.Struct, array_like=True,
                     .second_last_token_hidden_states[index]
             self._seq_ids = seq_ids
 
-    def expand_with_bonus_tokens(
-            self, seq_with_bonus_token_in_last_step: set) -> None:
-        """Expand hidden states for sequences with bonus tokens. This is in
-        alignment with `MultiStepWorker._expand_execute_model_request`."""
-        if self.second_last_token_hidden_states is None \
-            or not seq_with_bonus_token_in_last_step:
-            return
-
-        index = []
-        for seq_id in self._seq_ids:
-            i = self._seq_ids.index(seq_id)
-            if seq_id in seq_with_bonus_token_in_last_step:
-                index.append(i + len(self._seq_ids))
-            index.append(i)
-
-        self.hidden_states = torch.cat(
-            [self.hidden_states, self.second_last_token_hidden_states])[index]
-
 
 class ExecuteModelRequest(
         msgspec.Struct,
@@ -1386,15 +1339,6 @@ class ExecuteModelRequest(
     last_sampled_token_ids: Optional[torch.Tensor] = None
     # Async callback
     async_callback: Optional[Callable] = None
-
-    @property
-    def is_first_multi_step(self) -> bool:
-        # TODO(will) make this be able to handle batches with variable number of
-        # steps
-        assert len(self.seq_group_metadata_list) > 0
-        first_seq_group = self.seq_group_metadata_list[0]
-        assert first_seq_group.state is not None
-        return first_seq_group.state.current_step == 0
 
     @property
     def is_last_step(self) -> bool:

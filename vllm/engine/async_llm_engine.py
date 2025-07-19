@@ -311,14 +311,6 @@ class _AsyncLLMEngine(LLMEngine):
             # Maybe switch from async mode to sync mode
             if not allow_async_output_proc and len(ctx.output_queue) > 0:
                 self._process_model_outputs(ctx=ctx)
-
-            if (self.scheduler_config.is_multi_step
-                    and scheduler_outputs.num_lookahead_slots > 0):
-                # cache the scheduler outputs for the next iteration if we have
-                # lookahead slots
-                self._cache_scheduler_outputs_for_multi_step(
-                    virtual_engine, seq_group_metadata_list, scheduler_outputs,
-                    allow_async_output_proc)
         else:
             finished_requests_ids = list()
 

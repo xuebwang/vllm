@@ -138,13 +138,8 @@ def start_engine():
         timeout_s=60,
     )
 
-    num_scheduler_steps = int(os.getenv("NUM_SCHEDULER_STEPS", "1"))
-    print(f"Starting engine with num_scheduler_steps={num_scheduler_steps}")
-
     return AsyncLLMEngine.from_engine_args(
-        AsyncEngineArgs(model="facebook/opt-125m",
-                        enforce_eager=True,
-                        num_scheduler_steps=num_scheduler_steps))
+        AsyncEngineArgs(model="facebook/opt-125m", enforce_eager=True))
 
 
 def uid() -> str:
@@ -183,9 +178,6 @@ def should_do_global_cleanup_after_test(request) -> bool:
 @pytest.mark.parametrize("stop", [None, ["a stop string"]])
 async def test_asyncio_run(async_engine, stop):
 
-    scheduler_config = await async_engine.get_scheduler_config()
-    num_scheduler_steps = scheduler_config.num_scheduler_steps
-
     async def run(prompt: str):
         sampling_params = SamplingParams(
             temperature=0,
@@ -219,10 +211,7 @@ async def test_asyncio_run(async_engine, stop):
     assert str(first) == str(second)
 
     output_count = results[0][1]
-    if num_scheduler_steps == 1:
-        assert output_count == 32
-    else:
-        assert 1 < output_count < 32
+    assert output_count == 32
 
 
 @pytest.mark.asyncio(scope="module")
@@ -230,9 +219,6 @@ async def test_asyncio_run(async_engine, stop):
 async def test_output_kinds(async_engine, stop):
     """Test that output_kind works as expected and that
     results are equivalent across different kinds."""
-
-    scheduler_config = await async_engine.get_scheduler_config()
-    num_scheduler_steps = scheduler_config.num_scheduler_steps
 
     sampling_params = SamplingParams(
         temperature=0,
@@ -278,7 +264,7 @@ async def test_output_kinds(async_engine, stop):
 
             # Ensure we get prompt ids iff we haven't yet received output tokens
             if output_tokens:
-                assert 1 <= len(token_ids) <= num_scheduler_steps
+                assert len(token_ids) == 1
                 assert stop or text
                 assert not output.prompt_token_ids
             else:
@@ -314,11 +300,7 @@ async def test_output_kinds(async_engine, stop):
 
     # output message counts
     assert cumulative[3] == deltas[3]
-
-    if num_scheduler_steps == 1:
-        assert cumulative[3] == 32
-    else:
-        assert 1 < cumulative[3] < 32
+    assert cumulative[3] == 32
 
     assert final[3] == 1
 
@@ -326,9 +308,6 @@ async def test_output_kinds(async_engine, stop):
 @pytest.mark.asyncio(scope="module")
 @pytest.mark.parametrize("stop", [None, ["a stop string"]])
 async def test_cancellation(async_engine, stop):
-    scheduler_config = await async_engine.get_scheduler_config()
-    num_scheduler_steps = scheduler_config.num_scheduler_steps
-
     sampling_params = SamplingParams(
         temperature=0,
         min_tokens=13,
@@ -336,7 +315,7 @@ async def test_cancellation(async_engine, stop):
         stop=stop,
     )
 
-    stop_at = 5 if num_scheduler_steps == 1 else 1
+    stop_at = 5
 
     request_id = uid()
 
@@ -356,11 +335,6 @@ async def test_cancellation(async_engine, stop):
 @pytest.mark.asyncio(scope="module")
 @pytest.mark.parametrize("stop", [None, ["a stop string"]])
 async def test_delayed_generator(async_engine, stop):
-    scheduler_config = await async_engine.get_scheduler_config()
-
-    if scheduler_config.num_scheduler_steps != 1:
-        pytest.skip("no need to test this one with multistep")
-
     sampling_params = SamplingParams(
         temperature=0,
         min_tokens=10,
@@ -389,11 +363,6 @@ async def test_delayed_generator(async_engine, stop):
 
 @pytest.mark.asyncio(scope="module")
 async def test_invalid_argument(async_engine):
-    scheduler_config = await async_engine.get_scheduler_config()
-
-    if scheduler_config.num_scheduler_steps != 1:
-        pytest.skip("no need to test this one with multistep")
-
     sampling_params = SamplingParams(
         temperature=0,
         min_tokens=10,
