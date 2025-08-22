@@ -68,7 +68,8 @@ class QuarkConfig(QuantizationConfig):
         if isinstance(layer, LinearBase):
             scheme = self.get_scheme(layer=layer, layer_name=prefix)
             layer.scheme = scheme
-            return QuarkLinearMethod(self)
+            # logger.info(f"set QuarkLinearMethod for layer {prefix} with scheme {scheme.__class__.__name__}")
+            return QuarkLinearMethod(self, prefix)
         if isinstance(layer, Attention):
             return QuarkKVCacheMethod(self)
 
@@ -101,7 +102,8 @@ class QuarkConfig(QuantizationConfig):
             layer_quant_names = list(layer_quant_config.keys())
             layer_quant_set = set(layer_quant_names)
 
-            if not kv_cache_set.issubset(layer_quant_set):
+            if not (kv_cache_set.issubset(layer_quant_set) or \
+                any(fnmatch.fnmatchcase(layer_quant, pat) for layer_quant in list(layer_quant_set) for pat in list(kv_cache_set))):
                 raise ValueError("The Quark quantized model has the "
                                  "kv_cache_group parameter setting, "
                                  "but no kv_cache quantization settings "
@@ -112,13 +114,33 @@ class QuarkConfig(QuantizationConfig):
                 cast(dict[str, Any], layer_quant_config.get(name))
                 for name in kv_cache_group
             ]
+            if None in q_configs:
+                # kv_cache_configs = []
+                while None in q_configs:
+                    q_configs.remove(None)
+                for name, quant_cfg in layer_quant_config.items():
+                    if any(fnmatch.fnmatchcase(name, kv_pattern) for kv_pattern in kv_cache_group):
+                        # quant_cfg = {"output_tensors": quant_cfg["output_tensors"]}
+                        q_configs.append(quant_cfg)
+                        
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
+            # from pprint import pprint
+            # for q_config in q_configs:
+            #     ans = deep_compare(q_config["output_tensors"], q_configs[0]["output_tensors"])
+            #     # pprint(q_config)
+            #     print(ans)
+            #     if not ans:
+            #         pprint(q_configs[0])
+            #         pprint(q_config)
+
             if not all(
-                    deep_compare(q_config, q_configs[0])
+                    deep_compare(q_config["output_tensors"], q_configs[0]["output_tensors"])
                     for q_config in q_configs):
                 raise ValueError(
                     "The quantization method used for kv_cache should "
                     "be the same, but the quantization method for the "
                     "kv_cache layer in the config is different.")
+            
             kv_cache_config = q_configs[0].get("output_tensors")
             if kv_cache_config is None:
                 raise ValueError(
@@ -137,6 +159,7 @@ class QuarkConfig(QuantizationConfig):
             if q_proj_q_config is not None:
                 q_proj_q_config["output_tensors"] = None
 
+        # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
         return cls(quant_config=config,
                    kv_cache_group=kv_cache_group,
                    kv_cache_config=kv_cache_config,
@@ -268,6 +291,7 @@ class QuarkConfig(QuantizationConfig):
                 self._find_matched_config(shard_name, module)
                 for shard_name in shard_names
             ]
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
             if not all(
                     deep_compare(q_config, shard_configs[0])
                     for q_config in shard_configs):
@@ -356,8 +380,9 @@ class QuarkConfig(QuantizationConfig):
 
 class QuarkLinearMethod(LinearMethodBase):
 
-    def __init__(self, quantization_config: QuarkConfig):
+    def __init__(self, quantization_config: QuarkConfig, layer_name: str):
         self.quantization_config = quantization_config
+        self.layer_name = layer_name
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         layer.scheme.process_weights_after_loading(layer)
@@ -396,7 +421,13 @@ class QuarkLinearMethod(LinearMethodBase):
         scheme = layer.scheme
         if scheme is None:
             raise ValueError("A scheme must be defined for each layer")
-        return scheme.apply_weights(layer, x, bias=bias, x_scales=x_scales)
+        # logger.info(f"layer {self.layer_name} forward in {scheme.__class__.__name__} scheme")
+        if scheme.__class__.__name__ in ["***QuarkW4A4MXFP4"]:
+            return scheme.apply_weights(layer, x, bias=bias, x_scales=x_scales)
+        else:
+            return scheme.apply_weights(layer, x, bias=bias)
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
+            # return output
 
 
 class QuarkKVCacheMethod(BaseKVCacheMethod):

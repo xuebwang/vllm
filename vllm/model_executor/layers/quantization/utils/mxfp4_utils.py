@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+import os
+import sys
 import torch
 
 from vllm.utils import direct_register_custom_op
@@ -7,15 +10,25 @@ from vllm.utils import direct_register_custom_op
 OCP_MX_BLOCK_SIZE = 32
 
 
+def set_quark_home():
+    try:
+        import quark
+    except:
+        QUARK_HOME = os.environ.get("QUARK_HOME")
+        assert QUARK_HOME is not None, "Please set 'QUARK_HOME' in order to import fake quantization kernels implemented in Quark."
+        sys.path.append(QUARK_HOME)
+
+
 def _dequant_mxfp4(x: torch.Tensor, scale: torch.Tensor,
                    float_dtype: torch.dtype) -> torch.Tensor:
+    set_quark_home()
     try:
         from quark.torch.kernel import mx
     except ImportError as err:
         raise ImportError("The package `amd-quark` is required to use "
                           "MX-FP4 models. Please install it with `pip install "
                           "amd-quark`.") from err
-
+    assert scale is not None
     return mx.dq_mxfp4(x, scale, float_dtype)
 
 
@@ -28,6 +41,7 @@ def _dequant_mxfp4_fake(x: torch.Tensor, scale: torch.Tensor,
 
 def _quant_dequant_mxfp4(x: torch.Tensor,
                          scale_calculation_mode: str = "even") -> torch.Tensor:
+    set_quark_home()
     try:
         from quark.torch.kernel import mx
     except ImportError as err:

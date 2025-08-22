@@ -26,6 +26,7 @@ try:
         from aiter import gemm_a4w4_asm
         from aiter.utility.fp4_utils import (
             dynamic_mxfp4_quant as dynamic_mxfp4_quant_asm)
+    VLLM_QUARK_EMU_MEM_OPT = (os.environ.get("VLLM_QUARK_EMU_MEM_OPT", "0") == "1")
 except ImportError:
     dynamic_mxfp4_quant = gemm_afp4wfp4 = None
 
@@ -40,7 +41,7 @@ class QuarkW4A4MXFP4(QuarkScheme):
         self.qscheme = "per_group"
         self.weight_quant_spec = weight_quant_spec
         self.input_quant_spec = input_quant_spec
-        self.emulate = not current_platform.supports_mx()
+        self.emulate = not current_platform.supports_mx() or VLLM_QUARK_EMU_MEM_OPT
         if not self.emulate and (dynamic_mxfp4_quant is None
                                  or gemm_afp4wfp4 is None):
             # Currently need these kernels if not emulating
@@ -83,15 +84,17 @@ class QuarkW4A4MXFP4(QuarkScheme):
                 zero_point_shape=None,
             )
             weight_quantizer.scale.data = layer.weight_scale.data
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
 
-            if not envs.VLLM_QUARK_EMU_MEM_OPT:
+            if not VLLM_QUARK_EMU_MEM_OPT:
                 layer.weight = torch.nn.Parameter(
                     weight_quantizer(layer.weight.data).to(self.out_dtype),
                     requires_grad=False,
                 )
             else:
                 self.weight_quantizer = weight_quantizer
-            layer.weight_scale = None
+            # layer.weight_scale = None
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
 
             # This call is necessary to release the scales memory.
             torch.cuda.empty_cache()
@@ -146,17 +149,21 @@ class QuarkW4A4MXFP4(QuarkScheme):
             weight_loader=weight_loader,
         )
         layer.register_parameter("weight_scale", weight_scale)
-
+    
     def apply_weights(self,
                       layer: torch.nn.Module,
                       x: torch.Tensor,
                       bias: Optional[torch.Tensor] = None,
                       x_scales: torch.Tensor = None) -> torch.Tensor:
-
+        
         if self.emulate:
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
+            # assert layer.weight_scale is not None
             dq_w = dequant_mxfp4(layer.weight, layer.weight_scale, x.dtype)
 
+            # assert not torch.isnan(x).any().item(), "QuarkW4A4MXFP4 input x contains NaN!"
             x = quant_dequant_mxfp4(x)
+            # assert not torch.isnan(x).any().item(), "QuarkW4A4MXFP4 output x contains NaN!"
 
             return F.linear(x, dq_w, bias)
         else:
@@ -174,6 +181,7 @@ class QuarkW4A4MXFP4(QuarkScheme):
                                 dtype=self.out_dtype)
                 #asm_bias = torch.empty_like(y)
                 gemm_a4w4_asm(x_q, layer.weight, x_s, layer.weight_scale, y, y)
+                # print("--->>> Output of VLLM_TRITON_FP4_GEMM_USE_ASM", y[:M].dtype)
 
                 return y[:M]
             elif VLLM_TRITON_FP4_GEMM_USE_ASM:

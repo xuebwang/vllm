@@ -62,12 +62,14 @@ class QuarkW8A8Fp8(QuarkScheme):
             else:
                 max_w_scale = layer.weight_scale
                 weight = layer.weight
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
 
             max_w_scale, weight = requantize_with_max_scale(
                 weight=weight,
                 weight_scale=max_w_scale,
                 logical_widths=layer.logical_widths,
             )
+            # from vllm.debug import ForkedPdb; ForkedPdb().set_trace()
 
             layer.weight = Parameter(weight.t(), requires_grad=False)
             layer.weight_scale = Parameter(max_w_scale, requires_grad=False)
@@ -154,7 +156,7 @@ class QuarkW8A8Fp8(QuarkScheme):
                       layer: torch.nn.Module,
                       x: torch.Tensor,
                       bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-
+        # assert not torch.isnan(x).any().item(), "QuarkW8A8Fp8 input x contains NaN!"
         return self.fp8_linear.apply(input=x,
                                      weight=layer.weight,
                                      weight_scale=layer.weight_scale,

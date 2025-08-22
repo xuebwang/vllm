@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+import os
 from math import prod
 from typing import Any, Optional, Union
 
@@ -16,6 +17,8 @@ from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.utils import cdiv
 from vllm.utils.flashinfer import fp4_quantize
+
+VLLM_QUARK_EMU_MEM_OPT = (os.environ.get("VLLM_QUARK_EMU_MEM_OPT", "0") == "1")
 
 
 @triton.jit
@@ -169,7 +172,7 @@ def _mxfp4_quantize(
     block_shape: Optional[list[int]] = None,
 ) -> tuple[torch.Tensor, None]:
     assert block_shape is None
-    if not current_platform.supports_mx():
+    if not current_platform.supports_mx() or VLLM_QUARK_EMU_MEM_OPT:
         A = quant_dequant_mxfp4(A)
     else:
         raise NotImplementedError()
